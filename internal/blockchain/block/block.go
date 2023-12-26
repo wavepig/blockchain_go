@@ -18,7 +18,7 @@ type Block struct {
 	Nonce         int
 }
 
-// 序列化 块
+// Serialize 序列化块
 func (b *Block) Serialize() []byte {
 	var result bytes.Buffer
 	encoder := gob.NewEncoder(&result)
@@ -31,7 +31,7 @@ func (b *Block) Serialize() []byte {
 	return result.Bytes()
 }
 
-// 反序列化 块
+// DeserializeBlock 反序列化块
 func DeserializeBlock(d []byte) *Block {
 	var block Block
 
@@ -44,7 +44,7 @@ func DeserializeBlock(d []byte) *Block {
 	return &block
 }
 
-// SetHash计算并设置块哈希
+// SetHash 计算并设置块哈希
 // 获取块字段，将它们连接起来，并在连接的组合上计算SHA-256哈希
 func (b *Block) SetHash() {
 	timestamp := []byte(strconv.FormatInt(b.Timestamp, 10))
@@ -55,7 +55,7 @@ func (b *Block) SetHash() {
 	b.Hash = hash[:]
 }
 
-// NewBlock创建并返回一个区块Block
+// NewBlock 创建并返回一个区块Block
 func NewBlock(data string, prevBlockHash []byte) *Block {
 	block := &Block{time.Now().Unix(), []byte(data), prevBlockHash, []byte{}, 0}
 	pow := NewProofOfWork(block)
@@ -67,7 +67,7 @@ func NewBlock(data string, prevBlockHash []byte) *Block {
 	return block
 }
 
-// NewGenesisBlock创建并返回genesis Block
+// NewGenesisBlock 创建并返回genesis Block
 func NewGenesisBlock() *Block {
 	return NewBlock("创世(Genesis)区块", []byte{})
 }

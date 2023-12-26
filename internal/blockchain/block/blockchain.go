@@ -10,13 +10,13 @@ import (
 const dbFile = "blockchain.db"
 const blocksBucket = "blocks"
 
-// 区块链保持区块序列
+// Blockchain 区块链保持区块序列
 type Blockchain struct {
 	tip []byte // 追后端的hash 值
 	DB  *bolt.DB
 }
 
-// AddBlock将提供的数据保存为区块链中的一个块
+// AddBlock 将提供的数据保存为区块链中的一个块
 func (bc *Blockchain) AddBlock(data string) {
 	var lastHash []byte
 
@@ -58,7 +58,7 @@ func (bc *Blockchain) AddBlock(data string) {
 	fmt.Printf("Block added. Hash: %x\n", newBlock.Hash)
 }
 
-// NewBlockchain用genesis Block创建新的区块链
+// NewBlockchain 用genesis Block创建新的区块链
 func NewBlockchain() *Blockchain {
 	var tip []byte
 	db, err := bolt.Open(dbFile, 0600, nil)
@@ -70,7 +70,6 @@ func NewBlockchain() *Blockchain {
 		b := tx.Bucket([]byte(blocksBucket))
 
 		if b == nil {
-			fmt.Println("No existing blockchain found. Creating a new one...")
 			genesis := NewGenesisBlock()
 
 			b, err := tx.CreateBucket([]byte(blocksBucket))
@@ -105,20 +104,20 @@ func NewBlockchain() *Blockchain {
 	return &bc
 }
 
-// BlockchainIterator用于对区块链块进行迭代
+// BlockchainIterator 用于对区块链块进行迭代
 type BlockchainIterator struct {
 	currentHash []byte
 	db          *bolt.DB
 }
 
-// Iterator ...
+// Iterator 迭代器
 func (bc *Blockchain) Iterator() *BlockchainIterator {
 	bci := &BlockchainIterator{bc.tip, bc.DB}
 
 	return bci
 }
 
-// Next returns next block starting from the tip
+// Next 返回从开始的下一个块
 func (i *BlockchainIterator) Next() *Block {
 	var block *Block
 

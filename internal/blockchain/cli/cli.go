@@ -9,7 +9,7 @@ import (
 	"strconv"
 )
 
-// CLI responsible for processing command line arguments
+// CLI 负责处理命令行参数的CLI
 type CLI struct {
 	Bc *block.Blockchain
 }
@@ -52,7 +52,7 @@ func (cli *CLI) printChain() {
 	}
 }
 
-// Run parses command line arguments and processes commands
+// Run 解析命令行参数并处理命令
 func (cli *CLI) Run() {
 	cli.validateArgs()
 
