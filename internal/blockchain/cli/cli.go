@@ -2,6 +2,7 @@ package cli
 
 import (
 	"blockchain_go/internal/blockchain/block"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -55,15 +56,22 @@ func (cli *CLI) printChain() {
 	bci := bc.Iterator()
 
 	for {
-		b := bci.Next()
+		blockValue := bci.Next()
 
-		fmt.Printf("Prev. hash: %x\n", b.PrevBlockHash)
-		fmt.Printf("Hash: %x\n", b.Hash)
-		pow := block.NewProofOfWork(b)
+		fmt.Printf("Prev. hash: %x\n", blockValue.PrevBlockHash)
+		fmt.Printf("Hash: %x\n", blockValue.Hash)
+		fmt.Printf("Nonce: %d\n", blockValue.Nonce)
+		pow := block.NewProofOfWork(blockValue)
 		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
+		transactions, err := json.MarshalIndent(blockValue.Transactions, "", " ")
+		if err == nil {
+			fmt.Printf("Data: %v\n", string(transactions))
+		} else {
+			fmt.Printf("Data: %v\n", err.Error())
+		}
 		fmt.Println()
 
-		if len(b.PrevBlockHash) == 0 {
+		if len(blockValue.PrevBlockHash) == 0 {
 			break
 		}
 	}
