@@ -1,8 +1,8 @@
 package main
 
 import (
-	"blockchain_go/block"
-	"blockchain_go/cli"
+	"blockchain_go/internal/blockchain/block"
+	"blockchain_go/internal/blockchain/cli"
 )
 
 func main() {

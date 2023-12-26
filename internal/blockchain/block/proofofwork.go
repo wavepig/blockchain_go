@@ -1,7 +1,7 @@
 package block
 
 import (
-	"blockchain_go/utils"
+	"blockchain_go/pkg/utils"
 	"bytes"
 	"crypto/sha256"
 	"fmt"

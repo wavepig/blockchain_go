@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"blockchain_go/block"
+	"blockchain_go/internal/blockchain/block"
 	"flag"
 	"fmt"
 	"log"
