@@ -24,7 +24,6 @@ type ProofOfWork struct {
 // NewProofOfWork 构建并返回一个ProofOfWork
 func NewProofOfWork(b *Block) *ProofOfWork {
 	target := big.NewInt(1)
-	// target = target << (256 - 24)
 	target.Lsh(target, uint(256-targetBits))
 
 	pow := &ProofOfWork{b, target}
@@ -36,7 +35,7 @@ func (pow *ProofOfWork) prepareData(nonce int) []byte {
 	data := bytes.Join(
 		[][]byte{
 			pow.block.PrevBlockHash,
-			pow.block.Data,
+			pow.block.HashTransactions(),
 			utils.IntToHex(pow.block.Timestamp),
 			utils.IntToHex(int64(targetBits)),
 			utils.IntToHex(int64(nonce)),
@@ -52,8 +51,6 @@ func (pow *ProofOfWork) Run() (int, []byte) {
 	var hash [32]byte
 	nonce := 0
 
-	fmt.Printf("Mining the block containing(挖掘包含的块)\"%s\"\n", pow.block.Data)
-	// maxNonce 最大 int64 = 9223372036854775807
 	for nonce < maxNonce {
 		data := pow.prepareData(nonce)
 

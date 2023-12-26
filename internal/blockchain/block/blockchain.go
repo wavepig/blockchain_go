@@ -1,14 +1,17 @@
 package block
 
 import (
+	"encoding/hex"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/boltdb/bolt"
 )
 
 const dbFile = "blockchain.db"
 const blocksBucket = "blocks"
+const genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
 
 // Blockchain 区块链保持区块序列
 type Blockchain struct {
@@ -16,11 +19,23 @@ type Blockchain struct {
 	DB  *bolt.DB
 }
 
-// AddBlock 将提供的数据保存为区块链中的一个块
-func (bc *Blockchain) AddBlock(data string) {
+// BlockchainIterator 用于对区块链块进行迭代
+type BlockchainIterator struct {
+	currentHash []byte
+	DB          *bolt.DB
+}
+
+// Iterator 迭代器
+func (bc *Blockchain) Iterator() *BlockchainIterator {
+	bci := &BlockchainIterator{bc.tip, bc.DB}
+
+	return bci
+}
+
+// MineBlock 用提供的交易挖掘一个新区块
+func (bc *Blockchain) MineBlock(transactions []*Transaction) {
 	var lastHash []byte
 
-	// 这是另一种（只读）类型的BoltDB事务
 	err := bc.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		lastHash = b.Get([]byte("l"))
@@ -32,96 +47,118 @@ func (bc *Blockchain) AddBlock(data string) {
 		log.Panic(err)
 	}
 
-	newBlock := NewBlock(data, lastHash)
+	newBlock := NewBlock(transactions, lastHash)
 
 	err = bc.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		err := b.Put(newBlock.Hash, newBlock.Serialize())
 		if err != nil {
-			return err
+			log.Panic(err)
 		}
 
 		err = b.Put([]byte("l"), newBlock.Hash)
 		if err != nil {
-			return err
+			log.Panic(err)
 		}
 
 		bc.tip = newBlock.Hash
 
 		return nil
 	})
-
-	if err != nil {
-		log.Panic(err)
-	}
-
-	fmt.Printf("Block added. Hash: %x\n", newBlock.Hash)
 }
 
-// NewBlockchain 用genesis Block创建新的区块链
-func NewBlockchain() *Blockchain {
-	var tip []byte
-	db, err := bolt.Open(dbFile, 0600, nil)
-	if err != nil {
-		log.Panic(err)
-	}
+// FindUnspentTransactions 返回包含未使用输出的事务列表
+func (bc *Blockchain) FindUnspentTransactions(address string) []Transaction {
+	var unspentTXs []Transaction
+	spentTXOs := make(map[string][]int)
+	bci := bc.Iterator()
 
-	err = db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(blocksBucket))
+	for {
+		block := bci.Next()
 
-		if b == nil {
-			genesis := NewGenesisBlock()
+		for _, tx := range block.Transactions {
+			txID := hex.EncodeToString(tx.ID)
 
-			b, err := tx.CreateBucket([]byte(blocksBucket))
-			if err != nil {
-				return err
+		Outputs:
+			for outIdx, out := range tx.Vout {
+				// Was the output spent?
+				if spentTXOs[txID] != nil {
+					for _, spentOut := range spentTXOs[txID] {
+						if spentOut == outIdx {
+							continue Outputs
+						}
+					}
+				}
+
+				if out.CanBeUnlockedWith(address) {
+					unspentTXs = append(unspentTXs, *tx)
+				}
 			}
 
-			// 存储以genesis Block为起点的区块链 key = hash
-			err = b.Put(genesis.Hash, genesis.Serialize())
-			if err != nil {
-				return err
+			if tx.IsCoinbase() == false {
+				for _, in := range tx.Vin {
+					if in.CanUnlockOutputWith(address) {
+						inTxID := hex.EncodeToString(in.Txid)
+						spentTXOs[inTxID] = append(spentTXOs[inTxID], in.Vout)
+					}
+				}
 			}
-
-			err = b.Put([]byte("l"), genesis.Hash)
-			if err != nil {
-				return err
-			}
-			tip = genesis.Hash
-		} else {
-			tip = b.Get([]byte("l"))
 		}
 
-		return nil
-	})
-
-	if err != nil {
-		log.Panic(err)
+		if len(block.PrevBlockHash) == 0 {
+			break
+		}
 	}
 
-	bc := Blockchain{tip, db}
-
-	return &bc
+	return unspentTXs
 }
 
-// BlockchainIterator 用于对区块链块进行迭代
-type BlockchainIterator struct {
-	currentHash []byte
-	db          *bolt.DB
+// FindUTXO 查找并返回所有未使用的事务输出
+func (bc *Blockchain) FindUTXO(address string) []TXOutput {
+	var UTXOs []TXOutput
+	unspentTransactions := bc.FindUnspentTransactions(address)
+
+	for _, tx := range unspentTransactions {
+		for _, out := range tx.Vout {
+			if out.CanBeUnlockedWith(address) {
+				UTXOs = append(UTXOs, out)
+			}
+		}
+	}
+
+	return UTXOs
 }
 
-// Iterator 迭代器
-func (bc *Blockchain) Iterator() *BlockchainIterator {
-	bci := &BlockchainIterator{bc.tip, bc.DB}
+// FindSpendableOutputs 查找并返回未使用的输出以在输入中引用
+func (bc *Blockchain) FindSpendableOutputs(address string, amount int) (int, map[string][]int) {
+	unspentOutputs := make(map[string][]int)
+	unspentTXs := bc.FindUnspentTransactions(address)
+	accumulated := 0
 
-	return bci
+Work:
+	for _, tx := range unspentTXs {
+		txID := hex.EncodeToString(tx.ID)
+
+		for outIdx, out := range tx.Vout {
+			if out.CanBeUnlockedWith(address) && accumulated < amount {
+				accumulated += out.Value
+				unspentOutputs[txID] = append(unspentOutputs[txID], outIdx)
+
+				if accumulated >= amount {
+					break Work
+				}
+			}
+		}
+	}
+
+	return accumulated, unspentOutputs
 }
 
-// Next 返回从开始的下一个块
+// Next 返回下一个块
 func (i *BlockchainIterator) Next() *Block {
 	var block *Block
 
-	err := i.db.View(func(tx *bolt.Tx) error {
+	err := i.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		encodedBlock := b.Get(i.currentHash)
 		block = DeserializeBlock(encodedBlock)
@@ -136,4 +173,86 @@ func (i *BlockchainIterator) Next() *Block {
 	i.currentHash = block.PrevBlockHash
 
 	return block
+}
+
+func dbExists() bool {
+	if _, err := os.Stat(dbFile); os.IsNotExist(err) {
+		return false
+	}
+
+	return true
+}
+
+// NewBlockchain 创建一个新的区块链与创世块
+func NewBlockchain(address string) *Blockchain {
+	if dbExists() == false {
+		fmt.Println("没有找到现有的区块链，先创建一个。")
+		os.Exit(1)
+	}
+
+	var tip []byte
+	db, err := bolt.Open(dbFile, 0600, nil)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		tip = b.Get([]byte("l"))
+
+		return nil
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	bc := Blockchain{tip, db}
+
+	return &bc
+}
+
+// CreateBlockchain 创建一个新的区块链DB
+func CreateBlockchain(address string) *Blockchain {
+	if dbExists() {
+		fmt.Println("Blockchain already exists.")
+		os.Exit(1)
+	}
+
+	var tip []byte
+	db, err := bolt.Open(dbFile, 0600, nil)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		cbtx := NewCoinbaseTX(address, genesisCoinbaseData)
+		genesis := NewGenesisBlock(cbtx)
+
+		b, err := tx.CreateBucket([]byte(blocksBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
+		err = b.Put(genesis.Hash, genesis.Serialize())
+		if err != nil {
+			log.Panic(err)
+		}
+
+		err = b.Put([]byte("l"), genesis.Hash)
+		if err != nil {
+			log.Panic(err)
+		}
+		tip = genesis.Hash
+
+		return nil
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	bc := Blockchain{tip, db}
+
+	return &bc
 }
