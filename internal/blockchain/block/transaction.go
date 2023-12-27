@@ -11,7 +11,7 @@ import (
 
 const subsidy = 10
 
-// Transaction 代表一笔交易
+// Transaction 由交易 ID，输入和输出构成
 type Transaction struct {
 	ID   []byte
 	Vin  []TXInput  // 输入
@@ -37,14 +37,20 @@ func (tx *Transaction) SetID() {
 	tx.ID = hash[:]
 }
 
-// TXInput 表示事务输入
+// TXInput 交易输入结构体信息 包含 3 部分
+// Txid: 一个交易输入引用了之前一笔交易的一个输出, ID 表明是之前哪笔交易
+// Vout: 一笔交易可能有多个输出，Vout 为输出的索引
+// ScriptSig: 提供解锁输出 Txid:Vout 的数据
 type TXInput struct {
 	Txid      []byte
 	Vout      int
 	ScriptSig string
 }
 
-// TXOutput 表示事务输出
+// TXOutput 交易输出结构体信息 包含两部分
+// Value: 有多少币，就是存储在 Value 里面
+// ScriptPubKey: 对输出进行锁定
+// 在当前实现中，ScriptPubKey 将仅用一个字符串来代替
 type TXOutput struct {
 	Value        int
 	ScriptPubKey string
@@ -78,7 +84,7 @@ func NewCoinbaseTX(to, data string) *Transaction {
 func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transaction {
 	var inputs []TXInput
 	var outputs []TXOutput
-
+	// 找到足够的未花费输出
 	acc, validOutputs := bc.FindSpendableOutputs(from, amount)
 
 	if acc < amount {
@@ -98,8 +104,9 @@ func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transactio
 		}
 	}
 
-	// Build a list of outputs
+	// 构建一个输出列表
 	outputs = append(outputs, TXOutput{amount, to})
+	// 如果 UTXO 总数超过所需，则产生找零
 	if acc > amount {
 		outputs = append(outputs, TXOutput{acc - amount, from}) // a change
 	}

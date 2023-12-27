@@ -15,7 +15,7 @@ const genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second
 
 // Blockchain 区块链保持区块序列
 type Blockchain struct {
-	tip []byte // 追后端的hash 值
+	tip []byte // 最后端的Hash值
 	DB  *bolt.DB
 }
 
