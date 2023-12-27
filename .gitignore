@@ -35,5 +35,6 @@ dist/
 .vscode/
 cmd/blockchain/blockchain.db
 cmd/blockchain/blockchain.db.lock
+cmd/blockchain/wallet.dat
 # Cache
 *.swp
