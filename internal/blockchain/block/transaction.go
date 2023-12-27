@@ -14,8 +14,8 @@ const subsidy = 10
 // Transaction 代表一笔交易
 type Transaction struct {
 	ID   []byte
-	Vin  []TXInput
-	Vout []TXOutput
+	Vin  []TXInput  // 输入
+	Vout []TXOutput // 输出
 }
 
 // IsCoinbase 检查交易是否为Coinbase

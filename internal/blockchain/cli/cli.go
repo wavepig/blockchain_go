@@ -89,7 +89,7 @@ func (cli *CLI) send(from, to string, amount int) {
 // 创建区块 xx create -address [address]
 // 打印区块 xx print
 // 查看账号余额 xx get -address [address]
-//
+// 转账 xx send -from [原地址] -to [目的地址] -amount [多少]
 // Run 解析命令行参数并处理命令
 func (cli *CLI) Run() {
 	cli.validateArgs()
