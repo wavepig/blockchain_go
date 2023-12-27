@@ -11,6 +11,8 @@ import (
 
 const dbFile = "blockchain.db"
 const blocksBucket = "blocks"
+
+// 比特币第一笔 coinbase 交易包含了如下信息
 const genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
 
 // Blockchain 区块链保持区块序列
@@ -67,21 +69,25 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) {
 	})
 }
 
-// FindUnspentTransactions 返回包含未使用输出的事务列表
+// FindUnspentTransactions 返回包含未使用输出的交易列表
 func (bc *Blockchain) FindUnspentTransactions(address string) []Transaction {
 	var unspentTXs []Transaction
 	spentTXOs := make(map[string][]int)
 	bci := bc.Iterator()
 
 	for {
+		// 迭代器 将数据库中数据迭代出来
 		block := bci.Next()
 
 		for _, tx := range block.Transactions {
 			txID := hex.EncodeToString(tx.ID)
 
 		Outputs:
+			// 输出结构
 			for outIdx, out := range tx.Vout {
-				// Was the output spent?
+				// 如果一个输出被一个地址锁定，并且这个地址恰好是我们要找的地址，
+				// 那么这个输出就是我们想要的。不过在获取它之前，我们需要检查该输出是否已经被包含在一个交易的输入中，
+				// 也就是检查它是否已经被花费了
 				if spentTXOs[txID] != nil {
 					for _, spentOut := range spentTXOs[txID] {
 						if spentOut == outIdx {
@@ -89,12 +95,13 @@ func (bc *Blockchain) FindUnspentTransactions(address string) []Transaction {
 						}
 					}
 				}
-
+				// 交易存储在区块中 先要检查区块中没一笔交易
 				if out.CanBeUnlockedWith(address) {
 					unspentTXs = append(unspentTXs, *tx)
 				}
 			}
-
+			// 跳过那些已经被包含在其他输入中的输出（这说明这个输出已经被花费，无法再用了）。
+			// 检查完输出以后，我们将给定地址所有能够解锁输出的输入聚集起来（这并不适用于 coinbase 交易，因为它们不解锁输出）
 			if tx.IsCoinbase() == false {
 				for _, in := range tx.Vin {
 					if in.CanUnlockOutputWith(address) {
@@ -113,7 +120,7 @@ func (bc *Blockchain) FindUnspentTransactions(address string) []Transaction {
 	return unspentTXs
 }
 
-// FindUTXO 查找并返回所有未使用的事务输出
+// FindUTXO 查找并返回所有未使用的交易输出
 func (bc *Blockchain) FindUTXO(address string) []TXOutput {
 	var UTXOs []TXOutput
 	unspentTransactions := bc.FindUnspentTransactions(address)
@@ -129,7 +136,7 @@ func (bc *Blockchain) FindUTXO(address string) []TXOutput {
 	return UTXOs
 }
 
-// FindSpendableOutputs 查找并返回未使用的输出以在输入中引用
+// FindSpendableOutputs 查找并返回未使用的输出,并且返回以作为输入使用
 func (bc *Blockchain) FindSpendableOutputs(address string, amount int) (int, map[string][]int) {
 	unspentOutputs := make(map[string][]int)
 	unspentTXs := bc.FindUnspentTransactions(address)
@@ -213,6 +220,7 @@ func NewBlockchain(address string) *Blockchain {
 }
 
 // CreateBlockchain 创建一个新的区块链DB
+// address 用来接收挖出创世块的奖励
 func CreateBlockchain(address string) *Blockchain {
 	if dbExists() {
 		fmt.Println("Blockchain already exists.")

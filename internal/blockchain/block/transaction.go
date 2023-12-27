@@ -9,8 +9,10 @@ import (
 	"log"
 )
 
+// 挖出新块的奖励金 目前设置常量
 const subsidy = 10
 
+// 在比特币中，最先有输出，然后才有输入。换而言之，第一笔交易只有输出，没有输入。
 // Transaction 由交易 ID，输入和输出构成
 type Transaction struct {
 	ID   []byte
@@ -23,7 +25,7 @@ func (tx Transaction) IsCoinbase() bool {
 	return len(tx.Vin) == 1 && len(tx.Vin[0].Txid) == 0 && tx.Vin[0].Vout == -1
 }
 
-// SetID 设置事务的ID
+// SetID 设置交易的ID
 func (tx *Transaction) SetID() {
 	var encoded bytes.Buffer
 	var hash [32]byte
@@ -33,6 +35,7 @@ func (tx *Transaction) SetID() {
 	if err != nil {
 		log.Panic(err)
 	}
+	// 交易ID Sum256(Transaction)
 	hash = sha256.Sum256(encoded.Bytes())
 	tx.ID = hash[:]
 }
@@ -56,34 +59,38 @@ type TXOutput struct {
 	ScriptPubKey string
 }
 
-// CanUnlockOutputWith 检查该地址是否启动了事务
+// CanUnlockOutputWith 检查是否可以使用提供的数据解锁
 func (in *TXInput) CanUnlockOutputWith(unlockingData string) bool {
 	return in.ScriptSig == unlockingData
 }
 
-// CanBeUnlockedWith 检查是否可以使用提供的数据解锁输出
+// CanBeUnlockedWith 检查是否可以使用提供的数据解锁
 func (out *TXOutput) CanBeUnlockedWith(unlockingData string) bool {
 	return out.ScriptPubKey == unlockingData
 }
 
-// NewCoinbaseTX 创建一个新的Coinbase交易
+// NewCoinbaseTX 创建一个新的Coinbase交易 发行新币
+// 在区块链的最初，也就是第一个块，叫做创世块。正是这个创世块，产生了区块链最开始的输出。
+// 对于创世块，不需要引用之前的交易输出。因为在创世块之前根本不存在交易，也就没有不存在交易输出。
 func NewCoinbaseTX(to, data string) *Transaction {
 	if data == "" {
 		data = fmt.Sprintf("Reward to '%s'", to)
 	}
 
-	txin := TXInput{[]byte{}, -1, data}
-	txout := TXOutput{subsidy, to}
+	// 在比特币中，最先有输出，然后才有输入。换而言之，第一笔交易只有输出，没有输入。
+	txin := TXInput{[]byte{}, -1, data} // 第一笔 没有输入
+	txout := TXOutput{subsidy, to}      // 输出 10 第一个区块奖励
 	tx := Transaction{nil, []TXInput{txin}, []TXOutput{txout}}
 	tx.SetID()
 
 	return &tx
 }
 
-// NewUTXOTransaction 创建新的事务
+// NewUTXOTransaction 创建新的交易
+// from 发送者  to 接受者  amount 大小
 func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transaction {
-	var inputs []TXInput
-	var outputs []TXOutput
+	var inputs []TXInput   // 输入
+	var outputs []TXOutput // 输出
 	// 找到足够的未花费输出
 	acc, validOutputs := bc.FindSpendableOutputs(from, amount)
 
@@ -91,7 +98,7 @@ func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transactio
 		log.Panic("ERROR: Not enough funds")
 	}
 
-	// Build a list of inputs
+	// 构建一个输入列表
 	for txid, outs := range validOutputs {
 		txID, err := hex.DecodeString(txid)
 		if err != nil {
@@ -108,7 +115,7 @@ func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transactio
 	outputs = append(outputs, TXOutput{amount, to})
 	// 如果 UTXO 总数超过所需，则产生找零
 	if acc > amount {
-		outputs = append(outputs, TXOutput{acc - amount, from}) // a change
+		outputs = append(outputs, TXOutput{acc - amount, from})
 	}
 
 	tx := Transaction{nil, inputs, outputs}

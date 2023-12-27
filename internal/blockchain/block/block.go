@@ -11,7 +11,7 @@ import (
 // 块保留块标头
 type Block struct {
 	Timestamp     int64          // 当前的时间戳（当区块被创建时）
-	Transactions  []*Transaction // Data是区块中包含的实际有价值的信息
+	Transactions  []*Transaction // Transactions是区块中包含的实际有价值的交易信息
 	PrevBlockHash []byte         // 存储前一个区块的哈希
 	Hash          []byte         // 区块的哈希
 	Nonce         int
@@ -30,7 +30,10 @@ func (b *Block) Serialize() []byte {
 	return result.Bytes()
 }
 
-// HashTransactions 返回区块中交易的哈希值
+// HashTransactions 返回区块中交易所有的哈希值 Sum256(hashs)
+// 比特币使用了一个更加复杂的技术：它将一个块里面包含的所有交易表示为一个  Merkle tree ，
+// 然后在工作量证明系统中使用树的根哈希（root hash）。这个方法能够让我们快速检索一个块里面是否包含了某笔交易，
+// 即只需 root hash 而无需下载所有交易即可完成判断。
 func (b *Block) HashTransactions() []byte {
 	var txHashes [][]byte
 	var txHash [32]byte
@@ -56,17 +59,6 @@ func DeserializeBlock(d []byte) *Block {
 	return &block
 }
 
-// SetHash 计算并设置块哈希
-// 获取块字段，将它们连接起来，并在连接的组合上计算SHA-256哈希
-//func (b *Block) SetHash() {
-//	timestamp := []byte(strconv.FormatInt(b.Timestamp, 10))
-//	// Join将s的元素连接起来以创建一个新的字节切片。分隔符sep放置在结果切片中的元素之间。
-//	headers := bytes.Join([][]byte{b.PrevBlockHash, b.Data, timestamp}, []byte{})
-//	hash := sha256.Sum256(headers)
-//
-//	b.Hash = hash[:]
-//}
-
 // NewBlock 创建并返回一个区块Block
 func NewBlock(transactions []*Transaction, prevBlockHash []byte) *Block {
 	block := &Block{time.Now().Unix(), transactions, prevBlockHash, []byte{}, 0}
@@ -79,7 +71,7 @@ func NewBlock(transactions []*Transaction, prevBlockHash []byte) *Block {
 	return block
 }
 
-// NewGenesisBlock 创建并返回genesis Block
+// NewGenesisBlock 创建并返回创世Block
 func NewGenesisBlock(coinbase *Transaction) *Block {
 	return NewBlock([]*Transaction{coinbase}, []byte{})
 }
