@@ -33,8 +33,8 @@ lastversion/
 dist/
 .idea/
 .vscode/
-cmd/blockchain/blockchain.db
-cmd/blockchain/blockchain.db.lock
-cmd/blockchain/wallet.dat
+#cmd/blockchain/blockchain.db
+#cmd/blockchain/blockchain.db.lock
+#cmd/blockchain/wallet.dat
 # Cache
 *.swp

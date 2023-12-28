@@ -66,16 +66,19 @@ func NewCreateWalletCmd() *cobra.Command {
 		Use:   "create_w",
 		Short: "创建钱包",
 		Run: func(cmd *cobra.Command, args []string) {
-			//wallets, _ := wallet.NewWallets()
-			//address := wallets.CreateWallet()
-			//wallets.SaveToFile()
-			//
-			//fmt.Printf("Your new address: %s\n", address)
-
-			wallet := wallet.NewWallet()
-			address := wallet.GetAddress()
-
+			w := wallet.NewWallet()
+			address := w.GetAddress()
 			fmt.Printf("Your new address: %s\n", address)
+
+			wallets, err := wallet.NewWallets()
+			if err != nil {
+				fmt.Println("文件无数据：", err.Error())
+				wallets = new(wallet.Wallets)
+				wallets.Wallets = make(map[string]*wallet.Wallet)
+			}
+			wallets.Wallets[string(address)] = w
+
+			wallets.SaveToFile()
 		},
 	}
 	return cmd
@@ -147,11 +150,21 @@ func NewSendCmd() *cobra.Command {
 				log.Panic("ERROR: Recipient address is not valid")
 			}
 
-			bc := block.NewBlockchain(from)
+			//bc := block.NewBlockchain(from)
+			//defer bc.DB.Close()
+			//
+			//tx := block.NewUTXOTransaction(from, to, int(amount), bc)
+			//bc.MineBlock([]*block.Transaction{tx})
+			//fmt.Println("Success!")
+			bc := block.NewBlockchain()
+			UTXOSet := block.UTXOSet{bc}
 			defer bc.DB.Close()
 
-			tx := block.NewUTXOTransaction(from, to, int(amount), bc)
-			bc.MineBlock([]*block.Transaction{tx})
+			tx := block.NewUTXOTransaction(from, to, amount, &UTXOSet)
+			cbTx := block.NewCoinbaseTX(from, "")
+			txs := []*block.Transaction{cbTx, tx}
+
+			newBlock := bc.MineBlock(txs)
 			fmt.Println("Success!")
 		},
 	}

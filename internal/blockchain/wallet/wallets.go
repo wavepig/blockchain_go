@@ -1,18 +1,33 @@
 package wallet
 
 import (
-	"bytes"
+	"crypto/ecdsa"
 	"crypto/elliptic"
-	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"os"
 )
 
 // Wallets 保存多个钱包
 type Wallets struct {
 	Wallets map[string]*Wallet
+}
+
+type WalletsJson struct {
+	Wallets map[string]*WalletJson
+}
+
+type WalletJson struct {
+	PrivateKey PrivateKey
+	PublicKey  []byte
+}
+
+type PrivateKey struct {
+	//Curve   elliptic.Curve `json:"Curve"`
+	X, Y, D *big.Int
 }
 
 // NewWallets 创建钱包并从文件中填充（如果存在）
@@ -48,7 +63,12 @@ func (ws *Wallets) GetAddresses() []string {
 
 // GetWallet 通过地址返回钱包
 func (ws *Wallets) GetWallet(address string) Wallet {
-	return *ws.Wallets[address]
+	wallet, ok := ws.Wallets[address]
+	if ok {
+		return *wallet
+	}
+	log.Panic("get address nil", address)
+	return Wallet{}
 }
 
 // LoadFromFile 从文件中加载钱包
@@ -59,35 +79,55 @@ func (ws *Wallets) LoadFromFile() error {
 
 	fileContent, err := ioutil.ReadFile(walletFile)
 	if err != nil {
-		log.Panic(err)
+		return err
 	}
 
-	var wallets Wallets
-	gob.Register(elliptic.P256())
-	decoder := gob.NewDecoder(bytes.NewReader(fileContent))
-	err = decoder.Decode(&wallets)
+	var wallets WalletsJson
+	err = json.Unmarshal(fileContent, &wallets)
 	if err != nil {
-		log.Panic(err)
+		return err
+	}
+	//gob.Register(elliptic.P256())
+	//decoder := gob.NewDecoder(bytes.NewReader(fileContent))
+	//err = decoder.Decode(&wallets)
+	//if err != nil {
+	//	log.Panic(err)
+	//}
+
+	w := make(map[string]*Wallet)
+	for k, v := range wallets.Wallets {
+		w[k] = &Wallet{
+			PublicKey: v.PublicKey,
+			PrivateKey: ecdsa.PrivateKey{
+				ecdsa.PublicKey{
+					elliptic.P256(),
+					v.PrivateKey.X,
+					v.PrivateKey.Y,
+				},
+				v.PrivateKey.D,
+			},
+		}
 	}
 
-	ws.Wallets = wallets.Wallets
+	ws.Wallets = w
 
 	return nil
 }
 
 // SaveToFile 将钱包保存到文件
 func (ws *Wallets) SaveToFile() {
-	var content bytes.Buffer
-
-	gob.Register(elliptic.P256())
-
-	encoder := gob.NewEncoder(&content)
-	err := encoder.Encode(ws)
+	//var content bytes.Buffer
+	//gob.Register(elliptic.P256())
+	//
+	//encoder := gob.NewEncoder(&content)
+	//err := encoder.Encode(ws)
+	content, err := json.Marshal(ws)
 	if err != nil {
 		log.Panic(err)
 	}
+	//content.Bytes()
 
-	err = ioutil.WriteFile(walletFile, content.Bytes(), 0644)
+	err = ioutil.WriteFile(walletFile, content, 0644)
 	if err != nil {
 		log.Panic(err)
 	}

@@ -68,8 +68,10 @@ func (tx *Transaction) Sign(privKey ecdsa.PrivateKey, prevTXs map[string]Transac
 		}
 	}
 
+	// 复制一个交易副本，对副本进行裁剪
 	txCopy := tx.TrimmedCopy()
 
+	// 迭代每个输入
 	for inID, vin := range txCopy.Vin {
 		prevTx := prevTXs[hex.EncodeToString(vin.Txid)]
 		txCopy.Vin[inID].Signature = nil
