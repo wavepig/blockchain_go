@@ -54,7 +54,7 @@ func Base58Encode(input []byte) []byte {
 	return result
 }
 
-// Base58Decode BaseDecode 58编码数据
+// Base58Decode 将 Base58 解码为字节数组
 func Base58Decode(input []byte) []byte {
 	result := big.NewInt(0)
 	zeroBytes := 0

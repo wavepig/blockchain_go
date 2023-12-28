@@ -29,7 +29,7 @@ func NewWallets() (*Wallets, error) {
 func (ws *Wallets) CreateWallet() string {
 	wallet := NewWallet()
 	address := fmt.Sprintf("%s", wallet.GetAddress())
-
+	ws.Wallets = make(map[string]*Wallet)
 	ws.Wallets[address] = wallet
 
 	return address
