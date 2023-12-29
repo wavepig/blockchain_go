@@ -116,6 +116,7 @@ func (ws *Wallets) LoadFromFile() error {
 }
 
 // SaveToFile 将钱包保存到文件
+// 使用json序列化方式 方便查看与学习
 func (ws *Wallets) SaveToFile() {
 	//var content bytes.Buffer
 	//gob.Register(elliptic.P256())
