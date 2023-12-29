@@ -2,6 +2,7 @@ package merkle
 
 import "crypto/sha256"
 
+// Merkle tree [https://en.wikipedia.org/wiki/Merkle_tree]
 // MerkleTree 表示一棵 merkle 树
 type MerkleTree struct {
 	RootNode *MerkleNode
@@ -17,7 +18,7 @@ type MerkleNode struct {
 // NewMerkleTree 从数据序列中创建一个新的 Merkle 树
 func NewMerkleTree(data [][]byte) *MerkleTree {
 	var nodes []MerkleNode
-
+	// 叶子节点必须是双数 如果一个块里面的交易数为单数，那么就将最后一个叶子节点（也就是 Merkle 树的最后一个交易，不是区块的最后一笔交易）复制一份凑成双数
 	if len(data)%2 != 0 {
 		data = append(data, data[len(data)-1])
 	}

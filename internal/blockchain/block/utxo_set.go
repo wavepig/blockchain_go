@@ -8,12 +8,12 @@ import (
 
 const utxoBucket = "chainstate"
 
-// UTXOSet represents UTXO set
+// UTXOSet Blockchain cache
 type UTXOSet struct {
 	Blockchain *Blockchain
 }
 
-// FindSpendableOutputs finds and returns unspent outputs to reference in inputs
+// FindSpendableOutputs 查找并返回未使用的输出以在输入中引用
 func (u UTXOSet) FindSpendableOutputs(pubkeyHash []byte, amount int) (int, map[string][]int) {
 	unspentOutputs := make(map[string][]int)
 	accumulated := 0
@@ -94,7 +94,7 @@ func (u UTXOSet) CountTransactions() int {
 	return counter
 }
 
-// Reindex rebuilds the UTXO set
+// Reindex 初始化了 UTXO 集。首先，如果 bucket 存在就先移除，然后从区块链中获取所有的未花费输出，最终将输出保存到 bucket 中。
 func (u UTXOSet) Reindex() {
 	db := u.Blockchain.DB
 	bucketName := []byte(utxoBucket)
@@ -137,8 +137,9 @@ func (u UTXOSet) Reindex() {
 	})
 }
 
-// Update updates the UTXO set with transactions from the Block
-// The Block is considered to be the tip of a blockchain
+// Update 数据（交易）现在已经被分开存储：实际交易被存储在区块链中，未花费输出被存储在 UTXO 集中。
+// 这样一来，我们就需要一个良好的同步机制，因为我们想要 UTXO 集时刻处于最新状态，并且存储最新交易的输出。
+// 但是我们不想每生成一个新块，就重新生成索引，因为这正是我们要极力避免的频繁区块链扫描。
 func (u UTXOSet) Update(block *Block) {
 	db := u.Blockchain.DB
 

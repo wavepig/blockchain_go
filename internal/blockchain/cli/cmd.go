@@ -3,11 +3,13 @@ package cli
 import (
 	"blockchain_go/internal/blockchain/block"
 	"blockchain_go/internal/blockchain/wallet"
+	"blockchain_go/pkg/utils"
 	"errors"
 	"fmt"
 	"github.com/spf13/cobra"
 	"log"
 	"os"
+	"strconv"
 )
 
 var (
@@ -16,7 +18,6 @@ var (
 		Long:    "区块链学习！",
 		Version: "0.0.1",
 	}
-	cli = CLI{}
 )
 
 var (
@@ -32,12 +33,15 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&from, "from", "f", "", "转账地址")
 	rootCmd.PersistentFlags().StringVarP(&to, "to", "t", "", "目标地址")
 	rootCmd.PersistentFlags().Int64VarP(&amount, "amount", "m", 0, "转账金额")
-	rootCmd.AddCommand(NewGetAddressCmd())
-	rootCmd.AddCommand(NewPrintCmd())
-	rootCmd.AddCommand(NewCreateWalletCmd())
-	rootCmd.AddCommand(NewCreateBlockCmd())
-	rootCmd.AddCommand(NewListCmd())
-	rootCmd.AddCommand(NewSendCmd())
+	rootCmd.AddCommand(
+		NewGetAddressCmd(),
+		NewPrintCmd(),
+		NewCreateWalletCmd(),
+		NewCreateBlockCmd(),
+		NewListCmd(),
+		NewSendCmd(),
+		NewReindexUTXOCmd(),
+	)
 }
 
 func must(err error) {
@@ -55,7 +59,23 @@ func NewGetAddressCmd() *cobra.Command {
 			if address == "" {
 				must(errors.New("需要传递 address"))
 			}
-			cli.getBalance(address)
+			if !wallet.ValidateAddress(address) {
+				log.Panic("ERROR: Address is not valid")
+			}
+			bc := block.NewBlockchain()
+			UTXOSet := block.UTXOSet{bc}
+			defer bc.DB.Close()
+
+			balance := 0
+			pubKeyHash := utils.Base58Decode([]byte(address))
+			pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
+			UTXOs := UTXOSet.FindUTXO(pubKeyHash)
+
+			for _, out := range UTXOs {
+				balance += out.Value
+			}
+
+			fmt.Printf("Balance of '%s': %d\n", address, balance)
 		},
 	}
 	return cmd
@@ -97,7 +117,11 @@ func NewCreateBlockCmd() *cobra.Command {
 				log.Panic("ERROR: Address is not valid")
 			}
 			bc := block.CreateBlockchain(address)
-			bc.DB.Close()
+			defer bc.DB.Close()
+
+			UTXOSet := block.UTXOSet{bc}
+			UTXOSet.Reindex()
+
 			fmt.Println("Done!")
 		},
 	}
@@ -109,7 +133,27 @@ func NewPrintCmd() *cobra.Command {
 		Use:   "print",
 		Short: "获取地址余额",
 		Run: func(cmd *cobra.Command, args []string) {
-			cli.printChain()
+			bc := block.NewBlockchain()
+			defer bc.DB.Close()
+
+			bci := bc.Iterator()
+
+			for {
+				b := bci.Next()
+
+				fmt.Printf("============ Block %x ============\n", b.Hash)
+				fmt.Printf("Prev. block: %x\n", b.PrevBlockHash)
+				pow := block.NewProofOfWork(b)
+				fmt.Printf("PoW: %s\n\n", strconv.FormatBool(pow.Validate()))
+				for _, tx := range b.Transactions {
+					fmt.Println(tx)
+				}
+				fmt.Printf("\n\n")
+
+				if len(b.PrevBlockHash) == 0 {
+					break
+				}
+			}
 		},
 	}
 	return cmd
@@ -134,6 +178,22 @@ func NewListCmd() *cobra.Command {
 	return cmd
 }
 
+func NewReindexUTXOCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "reindex",
+		Short: "重建UTXO集",
+		Run: func(cmd *cobra.Command, args []string) {
+			bc := block.NewBlockchain()
+			UTXOSet := block.UTXOSet{bc}
+			UTXOSet.Reindex()
+
+			count := UTXOSet.CountTransactions()
+			fmt.Printf("Done! There are %d transactions in the UTXO set.\n", count)
+		},
+	}
+	return cmd
+}
+
 func NewSendCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "send",
@@ -150,21 +210,16 @@ func NewSendCmd() *cobra.Command {
 				log.Panic("ERROR: Recipient address is not valid")
 			}
 
-			//bc := block.NewBlockchain(from)
-			//defer bc.DB.Close()
-			//
-			//tx := block.NewUTXOTransaction(from, to, int(amount), bc)
-			//bc.MineBlock([]*block.Transaction{tx})
-			//fmt.Println("Success!")
 			bc := block.NewBlockchain()
 			UTXOSet := block.UTXOSet{bc}
 			defer bc.DB.Close()
 
-			tx := block.NewUTXOTransaction(from, to, amount, &UTXOSet)
+			tx := block.NewUTXOTransaction(from, to, int(amount), &UTXOSet)
 			cbTx := block.NewCoinbaseTX(from, "")
 			txs := []*block.Transaction{cbTx, tx}
 
 			newBlock := bc.MineBlock(txs)
+			UTXOSet.Update(newBlock)
 			fmt.Println("Success!")
 		},
 	}

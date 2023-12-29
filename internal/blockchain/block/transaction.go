@@ -174,27 +174,18 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 	return true
 }
 
-// SetID 设置交易的ID
-func (tx *Transaction) SetID() {
-	var encoded bytes.Buffer
-	var hash [32]byte
-
-	enc := gob.NewEncoder(&encoded)
-	err := enc.Encode(tx)
-	if err != nil {
-		log.Panic(err)
-	}
-	// 交易ID Sum256(Transaction)
-	hash = sha256.Sum256(encoded.Bytes())
-	tx.ID = hash[:]
-}
-
 // NewCoinbaseTX 创建一个新的Coinbase交易 发行新币
 // 在区块链的最初，也就是第一个块，叫做创世块。正是这个创世块，产生了区块链最开始的输出。
 // 对于创世块，不需要引用之前的交易输出。因为在创世块之前根本不存在交易，也就没有不存在交易输出。
 func NewCoinbaseTX(to, data string) *Transaction {
 	if data == "" {
-		data = fmt.Sprintf("Reward to '%s'", to)
+		randData := make([]byte, 20)
+		_, err := rand.Read(randData)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		data = fmt.Sprintf("%x", randData)
 	}
 
 	// 在比特币中，最先有输出，然后才有输入。换而言之，第一笔交易只有输出，没有输入。
@@ -208,23 +199,27 @@ func NewCoinbaseTX(to, data string) *Transaction {
 
 // NewUTXOTransaction 创建新的交易
 // from 发送者  to 接受者  amount 大小
-func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transaction {
-	var inputs []TXInput   // 输入
-	var outputs []TXOutput // 输出
-	// 找到足够的未花费输出
+func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) *Transaction {
+	var inputs []TXInput
+	var outputs []TXOutput
+
 	wallets, err := wallet.NewWallets()
 	if err != nil {
 		log.Panic(err)
 	}
-	walletKey := wallets.GetWallet(from)
-	pubKeyHash := wallet.HashPubKey(walletKey.PublicKey)
-	acc, validOutputs := bc.FindSpendableOutputs(pubKeyHash, amount)
+	// 返回转账钱包信息
+	w, err := wallets.GetWallet(from)
+	if err != nil {
+		log.Panic(err)
+	}
+	pubKeyHash := wallet.HashPubKey(w.PublicKey)
+	acc, validOutputs := UTXOSet.FindSpendableOutputs(pubKeyHash, amount)
 
 	if acc < amount {
 		log.Panic("ERROR: Not enough funds")
 	}
 
-	// 构建一个输入列表
+	// Build a list of inputs
 	for txid, outs := range validOutputs {
 		txID, err := hex.DecodeString(txid)
 		if err != nil {
@@ -232,20 +227,20 @@ func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transactio
 		}
 
 		for _, out := range outs {
-			input := TXInput{txID, out, nil, walletKey.PublicKey}
+			input := TXInput{txID, out, nil, w.PublicKey}
 			inputs = append(inputs, input)
 		}
 	}
 
-	// 构建一个输出列表
+	// Build a list of outputs
 	outputs = append(outputs, *NewTXOutput(amount, to))
 	if acc > amount {
 		outputs = append(outputs, *NewTXOutput(acc-amount, from)) // a change
 	}
-	// 如果 UTXO 总数超过所需，则产生找零
+
 	tx := Transaction{nil, inputs, outputs}
 	tx.ID = tx.Hash()
-	bc.SignTransaction(&tx, walletKey.PrivateKey)
+	UTXOSet.Blockchain.SignTransaction(&tx, w.PrivateKey)
 
 	return &tx
 }

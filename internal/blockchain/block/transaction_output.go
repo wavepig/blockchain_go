@@ -3,6 +3,8 @@ package block
 import (
 	"blockchain_go/pkg/utils"
 	"bytes"
+	"encoding/gob"
+	"log"
 )
 
 // TXOutput 交易输出结构体信息 包含两部分
@@ -31,12 +33,33 @@ func NewTXOutput(value int, address string) *TXOutput {
 	return txo
 }
 
-// CanUnlockOutputWith 检查是否可以使用提供的数据解锁
-//func (in *TXInput) CanUnlockOutputWith(unlockingData string) bool {
-//	return in.ScriptSig == unlockingData
-//}
+// TXOutputs collects TXOutput
+type TXOutputs struct {
+	Outputs []TXOutput
+}
 
-// CanBeUnlockedWith 检查是否可以使用提供的数据解锁
-//func (out *TXOutput) CanBeUnlockedWith(unlockingData string) bool {
-//	return out.ScriptPubKey == unlockingData
-//}
+// Serialize serializes TXOutputs
+func (outs TXOutputs) Serialize() []byte {
+	var buff bytes.Buffer
+
+	enc := gob.NewEncoder(&buff)
+	err := enc.Encode(outs)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return buff.Bytes()
+}
+
+// DeserializeOutputs deserializes TXOutputs
+func DeserializeOutputs(data []byte) TXOutputs {
+	var outputs TXOutputs
+
+	dec := gob.NewDecoder(bytes.NewReader(data))
+	err := dec.Decode(&outputs)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return outputs
+}

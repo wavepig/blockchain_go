@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -62,13 +63,13 @@ func (ws *Wallets) GetAddresses() []string {
 }
 
 // GetWallet 通过地址返回钱包
-func (ws *Wallets) GetWallet(address string) Wallet {
+func (ws *Wallets) GetWallet(address string) (Wallet, error) {
 	wallet, ok := ws.Wallets[address]
 	if ok {
-		return *wallet
+		return *wallet, nil
 	}
-	log.Panic("get address nil", address)
-	return Wallet{}
+
+	return Wallet{}, errors.New("get wallet address nil")
 }
 
 // LoadFromFile 从文件中加载钱包

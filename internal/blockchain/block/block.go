@@ -1,8 +1,8 @@
 package block
 
 import (
+	"blockchain_go/internal/blockchain/merkle"
 	"bytes"
-	"crypto/sha256"
 	"encoding/gob"
 	"log"
 	"time"
@@ -35,15 +35,14 @@ func (b *Block) Serialize() []byte {
 // 然后在工作量证明系统中使用树的根哈希（root hash）。这个方法能够让我们快速检索一个块里面是否包含了某笔交易，
 // 即只需 root hash 而无需下载所有交易即可完成判断。
 func (b *Block) HashTransactions() []byte {
-	var txHashes [][]byte
-	var txHash [32]byte
+	var transactions [][]byte
 
 	for _, tx := range b.Transactions {
-		txHashes = append(txHashes, tx.ID)
+		transactions = append(transactions, tx.Serialize())
 	}
-	txHash = sha256.Sum256(bytes.Join(txHashes, []byte{}))
+	mTree := merkle.NewMerkleTree(transactions)
 
-	return txHash[:]
+	return mTree.RootNode.Data
 }
 
 // DeserializeBlock 反序列化块
