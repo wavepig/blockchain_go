@@ -2,6 +2,7 @@ package cli
 
 import (
 	"blockchain_go/internal/blockchain/block"
+	"blockchain_go/internal/blockchain/server"
 	"blockchain_go/internal/blockchain/wallet"
 	"blockchain_go/pkg/utils"
 	"errors"
@@ -25,6 +26,9 @@ var (
 	from    string
 	to      string
 	amount  int64
+	miner   string
+	mine    bool
+	nodeId  string
 )
 
 func init() {
@@ -32,7 +36,10 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&address, "address", "a", "", "地址信息")
 	rootCmd.PersistentFlags().StringVarP(&from, "from", "f", "", "转账地址")
 	rootCmd.PersistentFlags().StringVarP(&to, "to", "t", "", "目标地址")
+	rootCmd.PersistentFlags().StringVarP(&miner, "miner", "e", "", "开启挖矿模式并发送奖励到address")
+	rootCmd.PersistentFlags().BoolVarP(&mine, "mine", "i", false, "在同一个节点上立即进行挖矿")
 	rootCmd.PersistentFlags().Int64VarP(&amount, "amount", "m", 0, "转账金额")
+	rootCmd.PersistentFlags().StringVarP(&nodeId, "node_id", "n", "3000", "端口常量")
 	rootCmd.AddCommand(
 		NewGetAddressCmd(),
 		NewPrintCmd(),
@@ -59,10 +66,11 @@ func NewGetAddressCmd() *cobra.Command {
 			if address == "" {
 				must(errors.New("需要传递 address"))
 			}
+
 			if !wallet.ValidateAddress(address) {
 				log.Panic("ERROR: Address is not valid")
 			}
-			bc := block.NewBlockchain()
+			bc := block.NewBlockchain(nodeId)
 			UTXOSet := block.UTXOSet{bc}
 			defer bc.DB.Close()
 
@@ -90,7 +98,7 @@ func NewCreateWalletCmd() *cobra.Command {
 			address := w.GetAddress()
 			fmt.Printf("Your new address: %s\n", address)
 
-			wallets, err := wallet.NewWallets()
+			wallets, err := wallet.NewWallets(nodeId)
 			if err != nil {
 				fmt.Println("文件无数据：", err.Error())
 				wallets = new(wallet.Wallets)
@@ -116,7 +124,7 @@ func NewCreateBlockCmd() *cobra.Command {
 			if !wallet.ValidateAddress(address) {
 				log.Panic("ERROR: Address is not valid")
 			}
-			bc := block.CreateBlockchain(address)
+			bc := block.CreateBlockchain(address, nodeId)
 			defer bc.DB.Close()
 
 			UTXOSet := block.UTXOSet{bc}
@@ -133,7 +141,7 @@ func NewPrintCmd() *cobra.Command {
 		Use:   "print",
 		Short: "获取地址余额",
 		Run: func(cmd *cobra.Command, args []string) {
-			bc := block.NewBlockchain()
+			bc := block.NewBlockchain(nodeId)
 			defer bc.DB.Close()
 
 			bci := bc.Iterator()
@@ -164,7 +172,7 @@ func NewListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "列出钱包文件中的所有地址",
 		Run: func(cmd *cobra.Command, args []string) {
-			wallets, err := wallet.NewWallets()
+			wallets, err := wallet.NewWallets(nodeId)
 			if err != nil {
 				log.Panic(err)
 			}
@@ -183,7 +191,7 @@ func NewReindexUTXOCmd() *cobra.Command {
 		Use:   "reindex",
 		Short: "重建UTXO集",
 		Run: func(cmd *cobra.Command, args []string) {
-			bc := block.NewBlockchain()
+			bc := block.NewBlockchain(nodeId)
 			UTXOSet := block.UTXOSet{bc}
 			UTXOSet.Reindex()
 
@@ -210,16 +218,31 @@ func NewSendCmd() *cobra.Command {
 				log.Panic("ERROR: Recipient address is not valid")
 			}
 
-			bc := block.NewBlockchain()
+			bc := block.NewBlockchain(nodeId)
 			UTXOSet := block.UTXOSet{bc}
 			defer bc.DB.Close()
 
-			tx := block.NewUTXOTransaction(from, to, int(amount), &UTXOSet)
-			cbTx := block.NewCoinbaseTX(from, "")
-			txs := []*block.Transaction{cbTx, tx}
+			wallets, err := wallet.NewWallets(nodeId)
+			if err != nil {
+				log.Panic(err)
+			}
+			wallet, err := wallets.GetWallet(from)
+			if err != nil {
+				log.Panic(err)
+			}
 
-			newBlock := bc.MineBlock(txs)
-			UTXOSet.Update(newBlock)
+			tx := block.NewUTXOTransaction(&wallet, to, int(amount), &UTXOSet)
+
+			if mine {
+				cbTx := block.NewCoinbaseTX(from, "")
+				txs := []*block.Transaction{cbTx, tx}
+
+				newBlock := bc.MineBlock(txs)
+				UTXOSet.Update(newBlock)
+			} else {
+				server.SendTxServer(tx)
+			}
+
 			fmt.Println("Success!")
 		},
 	}

@@ -24,8 +24,10 @@ type Blockchain struct {
 // MineBlock 用提供的交易挖掘一个新区块
 func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 	var lastHash []byte
+	var lastHeight int
 
 	for _, tx := range transactions {
+		// TODO: ignore transaction if it's not valid
 		if bc.VerifyTransaction(tx) != true {
 			log.Panic("ERROR: Invalid transaction")
 		}
@@ -35,13 +37,18 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 		b := tx.Bucket([]byte(blocksBucket))
 		lastHash = b.Get([]byte("l"))
 
+		blockData := b.Get(lastHash)
+		block := DeserializeBlock(blockData)
+
+		lastHeight = block.Height
+
 		return nil
 	})
 	if err != nil {
 		log.Panic(err)
 	}
 
-	newBlock := NewBlock(transactions, lastHash)
+	newBlock := NewBlock(transactions, lastHash, lastHeight+1)
 
 	err = bc.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
@@ -64,6 +71,82 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 	}
 
 	return newBlock
+}
+
+func (bc *Blockchain) AddBlock(block *Block) {
+	err := bc.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		blockInDb := b.Get(block.Hash)
+
+		if blockInDb != nil {
+			return nil
+		}
+
+		blockData := block.Serialize()
+		err := b.Put(block.Hash, blockData)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		lastHash := b.Get([]byte("l"))
+		lastBlockData := b.Get(lastHash)
+		lastBlock := DeserializeBlock(lastBlockData)
+
+		if block.Height > lastBlock.Height {
+			err = b.Put([]byte("l"), block.Hash)
+			if err != nil {
+				log.Panic(err)
+			}
+			bc.tip = block.Hash
+		}
+
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+// GetBlock 通过哈希找到一个块并返回它
+func (bc *Blockchain) GetBlock(blockHash []byte) (Block, error) {
+	var block Block
+
+	err := bc.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+
+		blockData := b.Get(blockHash)
+
+		if blockData == nil {
+			return errors.New("Block is not found.")
+		}
+
+		block = *DeserializeBlock(blockData)
+
+		return nil
+	})
+	if err != nil {
+		return block, err
+	}
+
+	return block, nil
+}
+
+// GetBlockHashes 返回链中所有区块的哈希列表
+func (bc *Blockchain) GetBlockHashes() [][]byte {
+	var blocks [][]byte
+	bci := bc.Iterator()
+
+	for {
+		block := bci.Next()
+
+		blocks = append(blocks, block.Hash)
+
+		if len(block.PrevBlockHash) == 0 {
+			break
+		}
+	}
+
+	return blocks
 }
 
 // SignTransaction 签署交易的输入
@@ -229,7 +312,26 @@ func (bc *Blockchain) Iterator() *BlockchainIterator {
 	return bci
 }
 
-func dbExists() bool {
+// GetBestHeight 返回最新块的高度
+func (bc *Blockchain) GetBestHeight() int {
+	var lastBlock Block
+
+	err := bc.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		lastHash := b.Get([]byte("l"))
+		blockData := b.Get(lastHash)
+		lastBlock = *DeserializeBlock(blockData)
+
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return lastBlock.Height
+}
+
+func dbExists(dbFile string) bool {
 	if _, err := os.Stat(dbFile); os.IsNotExist(err) {
 		return false
 	}
@@ -238,8 +340,9 @@ func dbExists() bool {
 }
 
 // NewBlockchain 创建一个新的区块链与创世块
-func NewBlockchain() *Blockchain {
-	if dbExists() == false {
+func NewBlockchain(nodeID string) *Blockchain {
+	dbFile := fmt.Sprintf(dbFile, nodeID)
+	if dbExists(dbFile) == false {
 		fmt.Println("没有找到现有的区块链，先创建一个。")
 		os.Exit(1)
 	}
@@ -268,13 +371,15 @@ func NewBlockchain() *Blockchain {
 
 // CreateBlockchain 创建一个新的区块链DB
 // address 用来接收挖出创世块的奖励
-func CreateBlockchain(address string) *Blockchain {
-	if dbExists() {
+func CreateBlockchain(address, nodeID string) *Blockchain {
+	dbFile := fmt.Sprintf(dbFile, nodeID)
+	if dbExists(dbFile) {
 		fmt.Println("Blockchain already exists.")
 		os.Exit(1)
 	}
 
 	var tip []byte
+
 	cbtx := NewCoinbaseTX(address, genesisCoinbaseData)
 	genesis := NewGenesisBlock(cbtx)
 

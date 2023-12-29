@@ -14,7 +14,8 @@ type Block struct {
 	Transactions  []*Transaction // Transactions是区块中包含的实际有价值的交易信息
 	PrevBlockHash []byte         // 存储前一个区块的哈希
 	Hash          []byte         // 区块的哈希
-	Nonce         int
+	Nonce         int            //
+	Height        int            // 高度以方便和网络上节点比较
 }
 
 // Serialize 序列化块
@@ -59,8 +60,8 @@ func DeserializeBlock(d []byte) *Block {
 }
 
 // NewBlock 创建并返回一个区块Block
-func NewBlock(transactions []*Transaction, prevBlockHash []byte) *Block {
-	block := &Block{time.Now().Unix(), transactions, prevBlockHash, []byte{}, 0}
+func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int) *Block {
+	block := &Block{time.Now().Unix(), transactions, prevBlockHash, []byte{}, 0, height}
 	pow := NewProofOfWork(block)
 	nonce, hash := pow.Run()
 
@@ -72,5 +73,5 @@ func NewBlock(transactions []*Transaction, prevBlockHash []byte) *Block {
 
 // NewGenesisBlock 创建并返回创世Block
 func NewGenesisBlock(coinbase *Transaction) *Block {
-	return NewBlock([]*Transaction{coinbase}, []byte{})
+	return NewBlock([]*Transaction{coinbase}, []byte{}, 0)
 }

@@ -27,12 +27,12 @@ type Transaction struct {
 }
 
 // IsCoinbase 检查交易是否为Coinbase
-func (tx Transaction) IsCoinbase() bool {
+func (tx *Transaction) IsCoinbase() bool {
 	return len(tx.Vin) == 1 && len(tx.Vin[0].Txid) == 0 && tx.Vin[0].Vout == -1
 }
 
 // Serialize 返回序列化的交易
-func (tx Transaction) Serialize() []byte {
+func (tx *Transaction) Serialize() []byte {
 	var encoded bytes.Buffer
 
 	enc := gob.NewEncoder(&encoded)
@@ -76,21 +76,22 @@ func (tx *Transaction) Sign(privKey ecdsa.PrivateKey, prevTXs map[string]Transac
 		prevTx := prevTXs[hex.EncodeToString(vin.Txid)]
 		txCopy.Vin[inID].Signature = nil
 		txCopy.Vin[inID].PubKey = prevTx.Vout[vin.Vout].PubKeyHash
-		txCopy.ID = txCopy.Hash()
-		txCopy.Vin[inID].PubKey = nil
 
-		r, s, err := ecdsa.Sign(rand.Reader, &privKey, txCopy.ID)
+		dataToSign := fmt.Sprintf("%x\n", txCopy)
+
+		r, s, err := ecdsa.Sign(rand.Reader, &privKey, []byte(dataToSign))
 		if err != nil {
 			log.Panic(err)
 		}
 		signature := append(r.Bytes(), s.Bytes()...)
 
 		tx.Vin[inID].Signature = signature
+		txCopy.Vin[inID].PubKey = nil
 	}
 }
 
 // String 实现字符串打印的接口
-func (tx Transaction) String() string {
+func (tx *Transaction) String() string {
 	var lines []string
 
 	lines = append(lines, fmt.Sprintf("--- Transaction %x:", tx.ID))
@@ -150,8 +151,6 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 		prevTx := prevTXs[hex.EncodeToString(vin.Txid)]
 		txCopy.Vin[inID].Signature = nil
 		txCopy.Vin[inID].PubKey = prevTx.Vout[vin.Vout].PubKeyHash
-		txCopy.ID = txCopy.Hash()
-		txCopy.Vin[inID].PubKey = nil
 
 		r := big.Int{}
 		s := big.Int{}
@@ -165,10 +164,13 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 		x.SetBytes(vin.PubKey[:(keyLen / 2)])
 		y.SetBytes(vin.PubKey[(keyLen / 2):])
 
-		rawPubKey := ecdsa.PublicKey{curve, &x, &y}
-		if ecdsa.Verify(&rawPubKey, txCopy.ID, &r, &s) == false {
+		dataToVerify := fmt.Sprintf("%x\n", txCopy)
+
+		rawPubKey := ecdsa.PublicKey{Curve: curve, X: &x, Y: &y}
+		if ecdsa.Verify(&rawPubKey, []byte(dataToVerify), &r, &s) == false {
 			return false
 		}
+		txCopy.Vin[inID].PubKey = nil
 	}
 
 	return true
@@ -199,19 +201,10 @@ func NewCoinbaseTX(to, data string) *Transaction {
 
 // NewUTXOTransaction 创建新的交易
 // from 发送者  to 接受者  amount 大小
-func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) *Transaction {
+func NewUTXOTransaction(w *wallet.Wallet, to string, amount int, UTXOSet *UTXOSet) *Transaction {
 	var inputs []TXInput
 	var outputs []TXOutput
 
-	wallets, err := wallet.NewWallets()
-	if err != nil {
-		log.Panic(err)
-	}
-	// 返回转账钱包信息
-	w, err := wallets.GetWallet(from)
-	if err != nil {
-		log.Panic(err)
-	}
 	pubKeyHash := wallet.HashPubKey(w.PublicKey)
 	acc, validOutputs := UTXOSet.FindSpendableOutputs(pubKeyHash, amount)
 
@@ -233,6 +226,7 @@ func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) *Transact
 	}
 
 	// Build a list of outputs
+	from := fmt.Sprintf("%s", w.GetAddress())
 	outputs = append(outputs, *NewTXOutput(amount, to))
 	if acc > amount {
 		outputs = append(outputs, *NewTXOutput(acc-amount, from)) // a change
@@ -243,4 +237,17 @@ func NewUTXOTransaction(from, to string, amount int, UTXOSet *UTXOSet) *Transact
 	UTXOSet.Blockchain.SignTransaction(&tx, w.PrivateKey)
 
 	return &tx
+}
+
+// DeserializeTransaction 反序列化
+func DeserializeTransaction(data []byte) Transaction {
+	var transaction Transaction
+
+	decoder := gob.NewDecoder(bytes.NewReader(data))
+	err := decoder.Decode(&transaction)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return transaction
 }

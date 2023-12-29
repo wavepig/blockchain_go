@@ -32,11 +32,11 @@ type PrivateKey struct {
 }
 
 // NewWallets 创建钱包并从文件中填充（如果存在）
-func NewWallets() (*Wallets, error) {
+func NewWallets(nodeID string) (*Wallets, error) {
 	wallets := &Wallets{}
 	wallets.Wallets = make(map[string]*Wallet)
 
-	err := wallets.LoadFromFile()
+	err := wallets.LoadFromFile(nodeID)
 
 	return wallets, err
 }
@@ -73,11 +73,11 @@ func (ws *Wallets) GetWallet(address string) (Wallet, error) {
 }
 
 // LoadFromFile 从文件中加载钱包
-func (ws *Wallets) LoadFromFile() error {
+func (ws *Wallets) LoadFromFile(nodeID string) error {
+	walletFile := fmt.Sprintf(walletFile, nodeID)
 	if _, err := os.Stat(walletFile); os.IsNotExist(err) {
 		return err
 	}
-
 	fileContent, err := ioutil.ReadFile(walletFile)
 	if err != nil {
 		return err
