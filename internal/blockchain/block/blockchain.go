@@ -12,9 +12,6 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-const dbFile = "blockchain.db"
-const blocksBucket = "blocks"
-
 // 比特币第一笔 coinbase 交易包含了如下信息
 const genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
 

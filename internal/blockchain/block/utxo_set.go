@@ -6,8 +6,6 @@ import (
 	"log"
 )
 
-const utxoBucket = "chainstate"
-
 // UTXOSet Blockchain cache
 type UTXOSet struct {
 	Blockchain *Blockchain
