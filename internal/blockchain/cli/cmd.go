@@ -48,6 +48,7 @@ func init() {
 		NewListCmd(),
 		NewSendCmd(),
 		NewReindexUTXOCmd(),
+		NewStartNodeCmd(),
 	)
 }
 
@@ -197,6 +198,25 @@ func NewReindexUTXOCmd() *cobra.Command {
 
 			count := UTXOSet.CountTransactions()
 			fmt.Printf("Done! There are %d transactions in the UTXO set.\n", count)
+		},
+	}
+	return cmd
+}
+
+func NewStartNodeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "start",
+		Short: "启动监控服务",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("Starting node %s\n", nodeId)
+			if len(miner) > 0 {
+				if wallet.ValidateAddress(miner) {
+					fmt.Println("Mining is on. Address to receive rewards: ", miner)
+				} else {
+					log.Panic("Wrong miner address!")
+				}
+			}
+			server.StartServer(nodeId, miner)
 		},
 	}
 	return cmd
